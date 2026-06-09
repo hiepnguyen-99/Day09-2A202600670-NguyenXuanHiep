@@ -1,4 +1,6 @@
-"""Law Agent server entry point — port 10101."""
+"""
+Law Agent server entry point — port 10101.
+"""
 
 from __future__ import annotations
 
@@ -9,15 +11,14 @@ import os
 import uvicorn
 from dotenv import load_dotenv
 
-load_dotenv()
-
 from a2a.server.apps import A2AFastAPIApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
-
 from common.registry_client import register
 from law_agent.agent_executor import LawAgentExecutor
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,10 +28,10 @@ logger = logging.getLogger(__name__)
 
 PORT = 10101
 AGENT_ENDPOINT = f"http://localhost:{PORT}"
+REGISTRY_URL = os.getenv("REGISTRY_URL", "http://localhost:10000")
 
 
 async def _register_with_retry(max_attempts: int = 10, delay: float = 2.0) -> None:
-    """Retry registration until the registry is up."""
     info = {
         "agent_name": "law-agent",
         "version": "1.0",
@@ -39,6 +40,7 @@ async def _register_with_retry(max_attempts: int = 10, delay: float = 2.0) -> No
         "endpoint": AGENT_ENDPOINT,
         "tags": ["legal", "contract", "law", "orchestrator"],
     }
+
     for attempt in range(1, max_attempts + 1):
         try:
             await register(info)
@@ -47,9 +49,13 @@ async def _register_with_retry(max_attempts: int = 10, delay: float = 2.0) -> No
         except Exception as exc:
             logger.warning(
                 "Registry not ready (attempt %d/%d): %s — retrying in %.0fs",
-                attempt, max_attempts, exc, delay,
+                attempt,
+                max_attempts,
+                exc,
+                delay,
             )
             await asyncio.sleep(delay)
+
     logger.error("Failed to register after %d attempts", max_attempts)
 
 
@@ -59,8 +65,8 @@ async def main() -> None:
     agent_card = AgentCard(
         name="Law Agent",
         description=(
-            "Senior corporate litigation attorney. Analyses legal questions and "
-            "orchestrates parallel tax and compliance sub-agent calls."
+            "Senior corporate litigation attorney. Analyses legal questions and orchestrates "
+            "parallel tax and compliance sub-agent calls."
         ),
         url=AGENT_ENDPOINT,
         version="1.0.0",
@@ -82,18 +88,11 @@ async def main() -> None:
 
     executor = LawAgentExecutor()
     task_store = InMemoryTaskStore()
-    request_handler = DefaultRequestHandler(
-        agent_executor=executor,
-        task_store=task_store,
-    )
-    app_builder = A2AFastAPIApplication(
-        agent_card=agent_card,
-        http_handler=request_handler,
-    )
-    app = app_builder.build()
 
-    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
-    server = uvicorn.Server(config)
+    request_handler = DefaultRequestHandler(agent_executor=executor, task_store=task_store)
+    app = A2AFastAPIApplication(agent_card=agent_card, http_handler=request_handler).build()
+
+    server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info"))
     logger.info("Law Agent listening on port %d", PORT)
     await server.serve()
 

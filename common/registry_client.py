@@ -1,8 +1,11 @@
-"""Registry client helpers.
-
-Provides `discover(task)` to look up an agent endpoint from the registry,
-and `register(agent_info)` for agents to self-register on startup.
 """
+Registry client helpers.
+
+- discover(task): look up an agent endpoint from the registry
+- register(agent_info): agents self-register on startup
+"""
+
+from __future__ import annotations
 
 import os
 
@@ -12,17 +15,7 @@ REGISTRY_URL = os.getenv("REGISTRY_URL", "http://localhost:10000")
 
 
 async def discover(task: str) -> str:
-    """Return the endpoint URL of the agent that handles the given task.
-
-    Args:
-        task: The task identifier (e.g. "legal_question", "tax_question").
-
-    Returns:
-        The HTTP endpoint base URL of the matching agent.
-
-    Raises:
-        httpx.HTTPStatusError: If no agent is found or the registry is unreachable.
-    """
+    """Return the endpoint URL of the agent that handles the given task."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(f"{REGISTRY_URL}/discover/{task}")
         resp.raise_for_status()
@@ -30,15 +23,7 @@ async def discover(task: str) -> str:
 
 
 async def register(agent_info: dict) -> None:
-    """Register an agent with the registry.
-
-    Args:
-        agent_info: Dict with keys: agent_name, version, description,
-                    tasks, endpoint, tags.
-
-    Raises:
-        httpx.HTTPStatusError: If registration fails.
-    """
+    """Register an agent with the registry."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(f"{REGISTRY_URL}/register", json=agent_info)
         resp.raise_for_status()

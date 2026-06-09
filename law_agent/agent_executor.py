@@ -1,4 +1,6 @@
-"""Law Agent — AgentExecutor bridge between A2A SDK and LangGraph StateGraph."""
+"""
+Law Agent — AgentExecutor bridge between A2A SDK and LangGraph StateGraph.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +16,6 @@ from law_agent.graph import create_graph
 
 logger = logging.getLogger(__name__)
 
-# Build graph once at module load
 _graph = create_graph()
 
 
@@ -23,15 +24,20 @@ class LawAgentExecutor(AgentExecutor):
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         question = self._extract_question(context)
+
         context_id = context.context_id or str(uuid4())
         task_id = context.task_id or str(uuid4())
-        metadata = context.message.metadata or {} if context.message else {}
+
+        metadata = (context.message.metadata or {}) if context.message else {}
         trace_id = metadata.get("trace_id", str(uuid4()))
         depth = int(metadata.get("delegation_depth", 0))
 
         logger.info(
             "LawAgent executing | task=%s context=%s trace=%s depth=%d",
-            task_id, context_id, trace_id, depth,
+            task_id,
+            context_id,
+            trace_id,
+            depth,
         )
 
         updater = TaskUpdater(event_queue, task_id, context_id)
@@ -55,10 +61,7 @@ class LawAgentExecutor(AgentExecutor):
                 config={"configurable": {"thread_id": context_id}},
             )
 
-            answer = result.get("final_answer", "")
-            if not answer:
-                # Fallback: use law_analysis if aggregation didn't produce output
-                answer = result.get("law_analysis", "")
+            answer = result.get("final_answer", "") or result.get("law_analysis", "")
             if not answer:
                 answer = "I was unable to generate a legal analysis at this time."
 
@@ -67,7 +70,6 @@ class LawAgentExecutor(AgentExecutor):
                 name="legal_analysis",
             )
             await updater.complete()
-
         except Exception as exc:
             logger.exception("LawAgent execution error: %s", exc)
             await updater.failed(
@@ -85,7 +87,7 @@ class LawAgentExecutor(AgentExecutor):
     @staticmethod
     def _extract_question(context: RequestContext) -> str:
         if context.message and context.message.parts:
-            parts = []
+            parts: list[str] = []
             for part in context.message.parts:
                 inner = getattr(part, "root", part)
                 text = getattr(inner, "text", None)

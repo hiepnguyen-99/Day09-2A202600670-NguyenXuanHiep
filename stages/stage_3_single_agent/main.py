@@ -78,35 +78,65 @@ LEGAL_KNOWLEDGE = [
         "text": (
             "SOX violations: CEO/CFO certification of false financials — up to $5M fine and "
             "20 years prison (§ 906). Destruction of records — up to 20 years (§ 802). "
-            "Whistleblower retaliation — up to 10 years (§ 1107). SEC can bar individuals "
-            "from serving as officers or directors."
+            "Whistleblower retaliation — up to 10 years (§ 1107). "
+            "SEC can bar individuals from serving as officers or directors."
         ),
     },
 ]
-
 
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
 
+
 @tool
 def search_legal_database(query: str) -> str:
     """Search the legal knowledge base for relevant statutes, case law, and legal principles.
 
+    Notes:
+        This is a toy "RAG" function. We intentionally keep it simple (keyword match),
+        but we match keywords as substrings so multi-word phrases like "trade secret"
+        still work.
+
     Args:
         query: Natural language search query about a legal topic.
     """
-    query_words = set(query.lower().split())
-    scored = []
+    query_lower = query.lower()
+
+    scored: list[tuple[int, dict]] = []
     for entry in LEGAL_KNOWLEDGE:
-        overlap = len(query_words & set(entry["keywords"]))
+        overlap = sum(1 for kw in entry["keywords"] if kw in query_lower)
         if overlap > 0:
             scored.append((overlap, entry))
+
     scored.sort(key=lambda x: x[0], reverse=True)
     top = scored[:2]
+
     if not top:
         return "No relevant legal sources found."
+
     return "\n\n".join(f"[{e['id']}] {e['text']}" for _, e in top)
+
+
+@tool
+def search_case_law(keywords: str) -> str:
+    """Search for illustrative case law by keyword (toy example for the codelab).
+
+    Args:
+        keywords: Search keywords (e.g., "breach", "negligence", "contract").
+    """
+    cases = {
+        "breach": "Hadley v. Baxendale (1854) - Consequential damages",
+        "negligence": "Donoghue v. Stevenson (1932) - Duty of care",
+        "contract": "Carlill v. Carbolic Smoke Ball Co (1893) - Unilateral contract",
+    }
+
+    keywords_lower = keywords.lower()
+    for key, case in cases.items():
+        if key in keywords_lower:
+            return case
+
+    return "No relevant case law found."
 
 
 @tool
@@ -162,7 +192,9 @@ def check_compliance_requirements(industry: str, company_size: str) -> str:
     }
 
     industry_lower = industry.lower()
-    applicable = frameworks.get(industry_lower, ["FTC Act Section 5", "State consumer protection laws"])
+    applicable = frameworks.get(
+        industry_lower, ["FTC Act Section 5", "State consumer protection laws"]
+    )
     size_note = size_extras.get(company_size.lower(), "")
 
     return (
@@ -172,7 +204,12 @@ def check_compliance_requirements(industry: str, company_size: str) -> str:
     )
 
 
-TOOLS = [search_legal_database, calculate_penalty, check_compliance_requirements]
+TOOLS = [
+    search_legal_database,
+    search_case_law,  # CODELAB Stage 3 - Exercise 3.1
+    calculate_penalty,
+    check_compliance_requirements,
+]
 
 QUESTION = (
     "A tech startup with $5M revenue was caught sharing user data without consent "
@@ -181,9 +218,9 @@ QUESTION = (
 
 SYSTEM_PROMPT = (
     "You are a legal analyst agent. You have access to tools for searching legal databases, "
-    "calculating penalties, and checking compliance requirements. Use these tools to build "
-    "a comprehensive analysis. Search for each legal area separately — data privacy, tax, "
-    "and compliance. Keep your final answer under 500 words."
+    "finding illustrative case law, calculating penalties, and checking compliance requirements. "
+    "Use these tools to build a comprehensive analysis. Search for each legal area separately — "
+    "data privacy, tax, and compliance. Keep your final answer under 500 words."
 )
 
 
@@ -205,12 +242,20 @@ async def main():
     print("-" * 70)
 
     llm = get_llm()
-    graph = create_react_agent(model=llm, tools=TOOLS, prompt=SYSTEM_PROMPT)
 
-    inputs = {"messages": [{"role": "user", "content": QUESTION}]}
+    # CODELAB Stage 3 - Exercise 3.2:
+    # In recent LangGraph versions, use debug=True (older docs sometimes mention verbose=True).
+    agent_executor = create_react_agent(
+        model=llm,
+        tools=TOOLS,
+        prompt=SYSTEM_PROMPT,
+        debug=True,
+    )
+
+    inputs = {"messages": [("user", QUESTION)]}
 
     step = 0
-    async for chunk in graph.astream(inputs, stream_mode="updates"):
+    async for chunk in agent_executor.astream(inputs, stream_mode="updates"):
         for node_name, update in chunk.items():
             step += 1
             messages = update.get("messages", [])

@@ -1,12 +1,14 @@
-"""Registry Service — port 10000.
+"""
+Registry Service — port 10000.
 
-A lightweight FastAPI service that allows agents to self-register and
-clients to discover agent endpoints by task name.
+A lightweight FastAPI service that allows agents to self-register and clients
+to discover agent endpoints by task name.
 
 Endpoints:
-  POST /register          — register an agent
-  GET  /discover/{task}   — find an agent that handles the given task
-  GET  /agents            — list all registered agents
+  POST /register         register an agent
+  GET  /discover/{task}  find an agent that handles the given task
+  GET  /agents           list all registered agents
+  GET  /health           basic health check
 """
 
 from __future__ import annotations
@@ -42,10 +44,10 @@ class AgentRegistration(BaseModel):
 
 @app.post("/register", status_code=200)
 async def register(registration: AgentRegistration) -> dict:
-    """Register or update an agent."""
     entry = registration.model_dump()
     entry["registered_at"] = datetime.now(timezone.utc).isoformat()
     agents[registration.agent_name] = entry
+
     logger.info(
         "Registered agent '%s' at %s (tasks=%s)",
         registration.agent_name,
@@ -57,7 +59,6 @@ async def register(registration: AgentRegistration) -> dict:
 
 @app.get("/discover/{task}")
 async def discover(task: str) -> dict:
-    """Return the first agent whose task list contains *task*."""
     for agent in agents.values():
         if task in agent.get("tasks", []):
             logger.info("Discovered agent '%s' for task '%s'", agent["agent_name"], task)
@@ -66,15 +67,12 @@ async def discover(task: str) -> dict:
                 "endpoint": agent["endpoint"],
                 "description": agent.get("description", ""),
             }
-    raise HTTPException(
-        status_code=404,
-        detail=f"No agent found for task '{task}'",
-    )
+
+    raise HTTPException(status_code=404, detail=f"No agent found for task '{task}'")
 
 
 @app.get("/agents")
 async def list_agents() -> dict:
-    """Return all registered agents."""
     return {"agents": list(agents.values())}
 
 

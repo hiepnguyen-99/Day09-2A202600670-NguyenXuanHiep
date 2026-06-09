@@ -1,16 +1,17 @@
-"""Compliance Agent — AgentExecutor bridge between A2A SDK and LangGraph."""
+"""
+Compliance Agent — AgentExecutor bridge between A2A SDK and LangGraph.
+"""
 
 from __future__ import annotations
 
 import logging
 from uuid import uuid4
 
-from langchain_core.messages import HumanMessage
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, TextPart
+from langchain_core.messages import HumanMessage
 
 from compliance_agent.graph import create_graph
 
@@ -31,15 +32,20 @@ class ComplianceAgentExecutor(AgentExecutor):
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         question = self._extract_question(context)
+
         context_id = context.context_id or str(uuid4())
         task_id = context.task_id or str(uuid4())
-        metadata = context.message.metadata or {} if context.message else {}
+
+        metadata = (context.message.metadata or {}) if context.message else {}
         trace_id = metadata.get("trace_id", str(uuid4()))
         depth = int(metadata.get("delegation_depth", 0))
 
         logger.info(
             "ComplianceAgent executing | task=%s context=%s trace=%s depth=%d",
-            task_id, context_id, trace_id, depth,
+            task_id,
+            context_id,
+            trace_id,
+            depth,
         )
 
         updater = TaskUpdater(event_queue, task_id, context_id)
@@ -52,13 +58,11 @@ class ComplianceAgentExecutor(AgentExecutor):
                 config={"configurable": {"thread_id": context_id}},
             )
 
-            # Extract the last AI message
             answer = ""
             for msg in reversed(result.get("messages", [])):
-                if hasattr(msg, "content") and msg.content:
-                    if not isinstance(msg, HumanMessage):
-                        answer = msg.content
-                        break
+                if hasattr(msg, "content") and msg.content and not isinstance(msg, HumanMessage):
+                    answer = msg.content
+                    break
 
             if not answer:
                 answer = "I was unable to generate a compliance analysis at this time."
@@ -68,7 +72,6 @@ class ComplianceAgentExecutor(AgentExecutor):
                 name="compliance_analysis",
             )
             await updater.complete()
-
         except Exception as exc:
             logger.exception("ComplianceAgent execution error: %s", exc)
             await updater.failed(
@@ -86,7 +89,7 @@ class ComplianceAgentExecutor(AgentExecutor):
     @staticmethod
     def _extract_question(context: RequestContext) -> str:
         if context.message and context.message.parts:
-            parts = []
+            parts: list[str] = []
             for part in context.message.parts:
                 inner = getattr(part, "root", part)
                 text = getattr(inner, "text", None)
