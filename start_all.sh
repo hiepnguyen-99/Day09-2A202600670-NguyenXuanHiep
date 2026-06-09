@@ -5,10 +5,15 @@ set -euo pipefail
 # Registry must be first, then leaf agents, then orchestrators.
 
 run_py() {
-  if command -v uv >/dev/null 2>&1; then
-    uv run python "$@"
-  else
+  if [ -x ".venv/Scripts/python.exe" ]; then
+    ".venv/Scripts/python.exe" "$@"
+  elif command -v python >/dev/null 2>&1; then
     python "$@"
+  elif command -v py >/dev/null 2>&1; then
+    py "$@"
+  else
+    echo "ERROR: Python not found. Activate your venv or install Python." >&2
+    exit 1
   fi
 }
 
